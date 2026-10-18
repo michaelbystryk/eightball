@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>The Astral Oracle — Magic 8 Ball</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <!-- UI fonts load in the background; nothing waits on them -->
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=Chakra+Petch:wght@700&display=swap" rel="stylesheet" media="print" onload="this.media='all'" />
+  <!-- before any module preload: Firefox ignores an import map that comes after one -->
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "/vendor/three/three.module.min.js",
+        "three/addons/": "/vendor/three/addons/"
+      }
+    }
+  </script>
+  <!-- fetch every module and font in parallel instead of discovering them import by import -->
+  <link rel="modulepreload" href="/vendor/three/three.module.min.js" />
+  <link rel="modulepreload" href="/src/main.js" />
+  <link rel="modulepreload" href="/src/set.js" />
+  <link rel="modulepreload" href="/src/ball.js" />
+  <link rel="modulepreload" href="/src/physics.js" />
+  <link rel="modulepreload" href="/src/cameraDirector.js" />
+  <link rel="modulepreload" href="/src/answers.js" />
+  <link rel="modulepreload" href="/vendor/three/addons/postprocessing/EffectComposer.js" />
+  <link rel="modulepreload" href="/vendor/three/addons/postprocessing/RenderPass.js" />
+  <link rel="modulepreload" href="/vendor/three/addons/postprocessing/UnrealBloomPass.js" />
+  <link rel="modulepreload" href="/vendor/three/addons/postprocessing/OutputPass.js" />
+  <link rel="modulepreload" href="/vendor/three/addons/postprocessing/ShaderPass.js" />
+  <link rel="modulepreload" href="/vendor/three/addons/postprocessing/MaskPass.js" />
+  <link rel="modulepreload" href="/vendor/three/addons/postprocessing/Pass.js" />
+  <link rel="modulepreload" href="/vendor/three/addons/shaders/CopyShader.js" />
+  <link rel="modulepreload" href="/vendor/three/addons/shaders/LuminosityHighPassShader.js" />
+  <link rel="modulepreload" href="/vendor/three/addons/shaders/OutputShader.js" />
+  <link rel="modulepreload" href="/vendor/three/addons/loaders/FontLoader.js" />
+  <script>
+    // start downloading the die's font right away; main.js picks these up
+    window.fontJSON = ['/fonts/chakra-petch-bold.json', '/fonts/chakra-petch-bolditalic-8.json']
+      .map((url) => fetch(url).then((r) => r.json()));
+  </script>
+  <style>
+    html, body { margin: 0; height: 100%; overflow: hidden; background: #07020e; }
+    canvas { display: block; touch-action: none; }
+    #ui {
+      position: fixed; inset: 0; pointer-events: none;
+      font-family: 'Cinzel', serif; color: #f1e3c0; text-align: center;
+    }
+    #title {
+      position: absolute; top: 22px; left: 0; right: 0;
+      font-size: 15px; letter-spacing: 0.5em; opacity: 0.65;
+    }
+    #hint {
+      position: absolute; bottom: 42px; left: 0; right: 0;
+      font-size: 17px; letter-spacing: 0.12em; text-shadow: 0 0 12px #7a3cff;
+      transition: opacity 0.6s;
+    }
+    #answer {
+      position: absolute; top: 64px; left: 0; right: 0;
+      font-size: clamp(22px, 3.4vw, 40px); font-weight: 700; letter-spacing: 0.14em;
+      color: #cfe0ff; text-shadow: 0 0 18px #3d6bff, 0 0 40px #3d6bff;
+      opacity: 0; transform: translateY(-8px); transition: opacity 1.2s, transform 1.2s;
+    }
+    #answer.show { opacity: 1; transform: none; }
+    #again {
+      position: absolute; bottom: 36px; left: 50%; transform: translateX(-50%);
+      pointer-events: auto; cursor: pointer;
+      font-family: inherit; font-size: 15px; letter-spacing: 0.25em; text-transform: uppercase;
+      color: #f1e3c0; background: rgba(40, 12, 70, 0.55);
+      border: 1px solid #c9a35a; border-radius: 999px; padding: 12px 30px;
+      box-shadow: 0 0 20px rgba(150, 90, 255, 0.35);
+      opacity: 0; visibility: hidden; transition: opacity 0.8s, background 0.2s;
+    }
+    #again.show { opacity: 1; visibility: visible; }
+    #home {
+      position: absolute; top: 18px; left: 22px; pointer-events: auto;
+      font-size: 13px; letter-spacing: 0.3em; text-transform: uppercase; text-decoration: none;
+      color: #f1e3c0; opacity: 0; visibility: hidden; transition: opacity 0.6s;
+    }
+    #home.show { opacity: 0.45; visibility: visible; }
+    #home:hover { opacity: 0.9; }
+    #make {
+      position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+      width: min(440px, 88vw); padding: 26px 28px; pointer-events: auto;
+      background: rgba(20, 6, 38, 0.82); border: 1px solid #c9a35a; border-radius: 16px;
+      box-shadow: 0 0 40px rgba(150, 90, 255, 0.35); display: none;
+    }
+    #make.show { display: block; }
+    #make h2 { margin: 0 0 6px; font-size: 18px; letter-spacing: 0.3em; }
+    #make p { margin: 0 0 16px; font-size: 13px; opacity: 0.7; letter-spacing: 0.05em; }
+    #make textarea {
+      width: 100%; box-sizing: border-box; height: 74px; resize: none; padding: 10px 12px;
+      font-family: 'Chakra Petch', sans-serif; font-weight: 700; font-size: 16px; text-transform: uppercase;
+      color: #cfe0ff; background: rgba(5, 10, 40, 0.8); border: 1px solid #5a4a8a; border-radius: 8px;
+    }
+    #make-link {
+      display: block; margin: 14px 0; font-size: 12px; word-break: break-all;
+      color: #f1e3c0; opacity: 0.8; font-family: monospace;
+    }
+    #make-copy {
+      font-family: inherit; font-size: 13px; letter-spacing: 0.2em; text-transform: uppercase; cursor: pointer;
+      color: #f1e3c0; background: rgba(80, 30, 130, 0.6); border: 1px solid #c9a35a; border-radius: 999px; padding: 9px 22px;
+    }
+    #make-copy:disabled { opacity: 0.4; cursor: default; }
+    #loading {
+      position: fixed; inset: 0; z-index: 10; display: grid; place-items: center;
+      background: radial-gradient(circle at 50% 45%, #2a0d45 0%, #07020e 70%);
+      transition: opacity 0.9s ease, visibility 0.9s;
+    }
+    #loading.done { opacity: 0; visibility: hidden; }
+    #loading .orb {
+      width: 92px; height: 92px; margin: 0 auto; border-radius: 50%;
+      background: radial-gradient(circle at 35% 30%, #4a4458 0%, #111 38%, #000 70%);
+      box-shadow: 0 0 40px rgba(150, 90, 255, 0.55), inset -8px -10px 20px rgba(0, 0, 0, 0.8);
+      display: grid; place-items: center; animation: bob 1.6s ease-in-out infinite;
+    }
+    #loading .orb::after {
+      content: '8'; width: 40px; height: 40px; border-radius: 50%; background: #f4f2ec;
+      display: grid; place-items: center; font: italic 700 26px sans-serif; color: #0b0b0d;
+    }
+    #loading p {
+      margin: 22px 0 0; padding-left: 0.4em; /* balances the letter-spacing after the last letter */
+      font: 13px Georgia, serif; letter-spacing: 0.4em; color: #f1e3c0; opacity: 0.6;
+      text-align: center; animation: pulse 1.6s ease-in-out infinite;
+    }
+    @keyframes bob { 50% { transform: translateY(-8px); } }
+    @keyframes pulse { 50% { opacity: 0.25; } }
+    #motion {
+      position: absolute; bottom: 120px; left: 50%; transform: translateX(-50%);
+      pointer-events: auto; cursor: pointer; white-space: nowrap;
+      font-family: inherit; font-size: 14px; letter-spacing: 0.18em; text-transform: uppercase;
+      color: #f1e3c0; background: rgba(40, 12, 70, 0.7);
+      border: 1px solid #c9a35a; border-radius: 999px; padding: 12px 24px;
+      box-shadow: 0 0 20px rgba(150, 90, 255, 0.45);
+      opacity: 0; visibility: hidden; transition: opacity 0.6s;
+    }
+    #motion.show { opacity: 1; visibility: visible; }
+    #again:hover { background: rgba(80, 30, 130, 0.7); }
+  </style>
+</head>
+<body>
+  <div id="loading"><div><div class="orb"></div><p>SUMMONING</p></div></div>
+  <div id="ui">
+    <a id="home" href="/">⌂ Home</a>
+    <div id="title">✦ THE ASTRAL ORACLE ✦</div>
+    <div id="answer" aria-live="polite"></div>
+    <div id="hint"></div>
+    <button id="again">Ask again</button>
+    <button id="motion">✦ Shake with your phone</button>
+    <div id="make">
+      <h2>✦ SECRET MESSAGE ✦</h2>
+      <p>Whoever opens the link will throw the ball, and the die will float up with your words.</p>
+      <textarea id="make-text" placeholder="Your message…"></textarea>
+      <a id="make-link" target="_blank"></a>
+      <button id="make-copy">Copy link</button>
+    </div>
+  </div>
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,22 @@
+# Render Blueprint: deploys the 8 ball as a static site on Render's CDN.
+# Only index.html, src/, vendor/ and fonts/ are published (CODES.md and server.py aren't deployed).
+services:
+  - type: web
+    name: eightball
+    runtime: static
+    buildCommand: rm -rf dist && mkdir dist && cp -r index.html src vendor fonts dist/
+    staticPublishPath: ./dist
+    domains:
+      - eightball.lol
+      - www.eightball.lol
+    headers:
+      # the modules change together; always revalidate so a stale one can't break the app
+      - path: /*
+        name: Cache-Control
+        value: no-cache
+    routes:
+      # secret links like /c3, /make and /m.<message> all load the app
+      # (real files such as /src/main.js are served first)
+      - type: rewrite
+        source: /*
+        destination: /index.html
